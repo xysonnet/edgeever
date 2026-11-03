@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Bold,
@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Contrast,
   Palette,
+  RotateCcw,
   Search,
   Shapes,
 } from "lucide-react";
@@ -20,7 +21,6 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -60,6 +60,7 @@ export const NotebookAppearanceDialog = ({
   const [visibleIconCount, setVisibleIconCount] = useState(40);
   const [iconQuery, setIconQuery] = useState("");
   const [iconOpen, setIconOpen] = useState(false);
+  const iconTriggerRef = useRef<HTMLButtonElement>(null);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const validColor = color === "" || isNotebookColor(color);
@@ -96,12 +97,14 @@ export const NotebookAppearanceDialog = ({
       }}
     >
       <DialogContent
+        aria-describedby={undefined}
         className="max-h-[90dvh] w-[calc(100%-2rem)] max-w-[520px] gap-0 overflow-hidden p-0"
         showCloseButton={!saving}
         onEscapeKeyDown={(event) => {
           if (iconOpen) {
             event.preventDefault();
             setIconOpen(false);
+            iconTriggerRef.current?.focus();
           }
         }}
       >
@@ -110,9 +113,6 @@ export const NotebookAppearanceDialog = ({
             <Palette className="h-5 w-5 text-slate-700" />
             {t("notebookAppearance.title")}
           </DialogTitle>
-          <DialogDescription className="pt-1 leading-5">
-            {t("notebookAppearance.description")}
-          </DialogDescription>
         </DialogHeader>
         <form onSubmit={save} className="min-h-0 overflow-y-auto">
           <fieldset
@@ -144,11 +144,12 @@ export const NotebookAppearanceDialog = ({
                         event.preventDefault();
                         event.stopPropagation();
                         setIconOpen(false);
-                        event.currentTarget.querySelector("button")?.focus();
+                        iconTriggerRef.current?.focus();
                       }
                     }}
                   >
                     <button
+                      ref={iconTriggerRef}
                       type="button"
                       aria-label={t("notebookAppearance.icon")}
                       aria-expanded={iconOpen}
@@ -178,6 +179,10 @@ export const NotebookAppearanceDialog = ({
                           <Input
                             autoFocus
                             value={iconQuery}
+                            onKeyDown={(event) => {
+                              // Searching must not submit the appearance form.
+                              if (event.key === "Enter") event.preventDefault();
+                            }}
                             onChange={(event) => {
                               setIconQuery(event.target.value);
                               setVisibleIconCount(40);
@@ -211,6 +216,9 @@ export const NotebookAppearanceDialog = ({
                                 type="button"
                                 role="option"
                                 aria-selected={icon === item.id}
+                                // Safari does not focus clicked buttons; keep the search
+                                // focused until the option's click handler has run.
+                                onMouseDown={(event) => event.preventDefault()}
                                 onClick={() => {
                                   setIcon(item.id);
                                   setIconOpen(false);
@@ -386,6 +394,7 @@ export const NotebookAppearanceDialog = ({
                 setRowInverted(false);
               }}
             >
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
               {t("notebookAppearance.reset")}
             </Button>
             <div className="flex justify-end gap-2">
@@ -400,9 +409,10 @@ export const NotebookAppearanceDialog = ({
               <Button
                 type="submit"
                 variant="solid"
+                className="border-slate-900 bg-slate-900 text-white hover:border-slate-800 hover:bg-slate-800 dark:border-slate-200 dark:bg-slate-200 dark:text-slate-900 dark:hover:border-slate-100 dark:hover:bg-slate-100"
                 disabled={saving || !validColor || !validTextColor}
               >
-                {saving ? t("common.processing") : t("common.save")}
+                {saving ? t("common.processing") : t("notebookAppearance.confirm")}
               </Button>
             </div>
           </DialogFooter>

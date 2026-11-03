@@ -3,6 +3,17 @@ import { resolveNoteProse } from "@edgeever/shared";
 import { notePrintAppearanceCss, notePrintAppearanceFromProse } from "./note-print-appearance.ts";
 
 describe("note print appearance", () => {
+  test("print code follows a selected monospace face but keeps its own fallback for proportional prose", () => {
+    for (const choice of ["maple-mono-cn", "jetbrains", "wenkai", "system"]) {
+      const css = notePrintAppearanceCss(notePrintAppearanceFromProse(
+        resolveNoteProse({}), "github-light", { choice, customFamily: "" },
+      ));
+      if (choice === "maple-mono-cn" || choice === "jetbrains") {
+        expect(css).toContain("--editor-code-font-family:");
+        expect(css).toContain(choice === "jetbrains" ? "EdgeEver Share JetBrains Mono" : "EdgeEver Share Maple Mono CN");
+      } else expect(css).not.toContain("--editor-code-font-family:");
+    }
+  });
   test("keeps native prose on the editor neutrals and passes the account type size", () => {
     const appearance = notePrintAppearanceFromProse(resolveNoteProse({
       fontSize: 18,
@@ -28,7 +39,8 @@ describe("note print appearance", () => {
     expect(css).toContain("color: #14796E");
     expect(css).toContain("color: #20AD9D");
     expect(css).toContain("accent-color: #20AD9D");
-    expect(css).toContain("background: #F2FBFA;");
+    expect(css).toContain("background: #20AD9D;");
+    expect(css).toContain("background: #f9fafb;");
     expect(css).not.toContain("border-color: #CDEFEA;");
     expect(css).toContain(".edgeever-editor .ProseMirror strong { color: #112233; }");
     expect(css).not.toContain("not-a-theme");

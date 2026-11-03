@@ -1,4 +1,4 @@
-import { PUBLISHED_NOTE_BODY_FONTS } from "./sharing";
+import { isValidMemoShareSlug, PUBLISHED_NOTE_BODY_FONTS } from "./sharing";
 import { z } from "zod";
 import {
   MAX_NOTE_PROSE_CSS_BYTES,
@@ -445,7 +445,17 @@ export const SharePasswordUpdateSchema = z.object({
   passwordProtected: z.boolean(),
 });
 
-export const MemoShareUpdateSchema = SharePasswordUpdateSchema;
+export const MemoShareUpdateSchema = z.object({
+  passwordProtected: z.boolean().optional(),
+  password: z.string().trim().min(4).max(64).optional(),
+  slug: z.string().trim().toLowerCase().refine(isValidMemoShareSlug).nullable().optional(),
+  showUpdatedAt: z.boolean().optional(),
+  showBranding: z.boolean().optional(),
+  /** ISO instant with an offset, or null to remove the expiry. The server rejects past instants. */
+  expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
+}).refine((input) => input.passwordProtected !== undefined || input.password !== undefined || input.slug !== undefined || input.showUpdatedAt !== undefined || input.showBranding !== undefined || input.expiresAt !== undefined, {
+  message: "At least one field is required.",
+});
 export const NotebookShareUpdateSchema = SharePasswordUpdateSchema;
 
 export const NoteBodyFontUpdateSchema = z.object({

@@ -1,5 +1,7 @@
 import {
   AudioLines,
+  BookOpenText,
+  PenLine,
   ChevronLeft,
   ChevronRight,
   Database,
@@ -15,7 +17,8 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
+import { isDesktopViewport } from "@/lib/workspace-shell";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
 import * as m from "motion/react-m";
@@ -26,14 +29,17 @@ import type { NoteProsePatch, ResolvedNoteProse } from "@edgeever/shared";
 import { BETA_BADGE_CLASSNAME, WORKSPACE_PAGE_TITLE_CLASSNAME } from "@/lib/workspace-ui";
 import { cn } from "@/lib/utils";
 import { AccountInfoCard } from "./settings/AccountInfoCard";
+import { DesktopScheduledBackupCard } from "./settings/DesktopScheduledBackupCard";
 import { DataExportCard } from "./settings/DataExportCard";
 import { DesktopLocalDataCard } from "./settings/DesktopLocalDataCard";
 import { LoginDevicesCard } from "./settings/LoginDevicesCard";
 import { ShareManagementCard } from "./settings/ShareManagementCard";
-import { EvernoteImportGuideCard } from "./settings/EvernoteImportGuideCard";
+import { ThirdPartyImportCard } from "./settings/ThirdPartyImportCard";
+import type { NoteImportController } from "@/lib/note-import/controller";
 import { FeedbackLink } from "./settings/FeedbackLink";
 import { SystemInfoPanel } from "./settings/SystemInfoPanel";
 import { McpConfigCard } from "./settings/McpConfigCard";
+import { AiSpaceShortcutSettingsItem } from "./settings/AiSpaceShortcutSettingsItem";
 import { PreferenceCard } from "./settings/PreferenceCard";
 import { ShortcutSettingsItem } from "./settings/ShortcutSettingsItem";
 import { PasswordCard } from "./settings/PasswordCard";
@@ -47,6 +53,12 @@ import type { AuthUser } from "@edgeever/shared";
 import { contentEnterMotion } from "@/lib/motion";
 import { useDeployedUpdateNotice } from "@/hooks/useDeployedUpdateNotice";
 import { ExecutionCenterButton } from "@/components/execution/ExecutionCenterButton";
+
+const subscribeViewport = (callback: () => void) => {
+  const media = window.matchMedia("(min-width: 1024px)");
+  media.addEventListener("change", callback);
+  return () => media.removeEventListener("change", callback);
+};
 
 interface SettingsPaneProps {
   onClose: () => void;
@@ -65,6 +77,7 @@ interface SettingsPaneProps {
   isOwner: boolean;
   user: AuthUser | null;
   refreshWorkspaceAfterImport: () => Promise<void>;
+  noteImport: NoteImportController;
   onOpenExecutionCenter: () => void;
   onOpenMemo: (memoId: string, notebookId: string) => void;
 }
@@ -76,7 +89,7 @@ const SettingsGroup = ({ children }: { children: ReactNode }) => (
   </div>
 );
 
-type TabKey = "general" | "shortcuts" | "users" | "data" | "ai" | "mcp" | "speech" | "sharing" | "advanced" | "account" | "system";
+type TabKey = "general" | "reading" | "editing" | "shortcuts" | "users" | "data" | "ai" | "mcp" | "speech" | "sharing" | "advanced" | "account" | "system";
 
 interface TabItem {
   key: TabKey;
@@ -102,6 +115,7 @@ export const SettingsPane = ({
   isOwner,
   user,
   refreshWorkspaceAfterImport,
+  noteImport,
   onOpenExecutionCenter,
   onOpenMemo,
 }: SettingsPaneProps) => {
@@ -117,6 +131,16 @@ export const SettingsPane = ({
       key: "general",
       label: t("settings.tabs.general"),
       icon: SlidersHorizontal,
+    },
+    {
+      key: "reading",
+      label: t("settings.tabs.reading"),
+      icon: BookOpenText,
+    },
+    {
+      key: "editing",
+      label: t("settings.tabs.editing"),
+      icon: PenLine,
     },
     {
       key: "shortcuts",
@@ -182,7 +206,7 @@ export const SettingsPane = ({
   const activeTab = selectedTab ?? "general";
   const activeMobileTab = selectedTab;
 
-  const mobileTabItems = tabItems.filter((item) => item.key !== "shortcuts");
+  const mobileTabItems = tabItems.filter((item) => item.key !== "shortcuts" || import.meta.env.DEV);
 
   const handleBack = () => {
     if (window.matchMedia("(max-width: 1023px)").matches && activeMobileTab !== null) {
@@ -208,28 +232,39 @@ export const SettingsPane = ({
     return User;
   })();
 
-  const renderTabContent = (key: TabKey) => {
+  const desktopViewport = useSyncExternalStore(subscribeViewport, isDesktopViewport);
+  const renderTabContent = (key: TabKey, desktopLayout: boolean) => {
+    // Backup dialogs reflect a main-process task; mount one consumer, not both CSS layouts.
+    if (key === "data" && desktopLayout !== desktopViewport) return null;
     switch (key) {
       case "general":
+      case "reading":
+      case "editing":
         return (
           <div className="grid gap-6">
             <PreferenceCard
+              section={key}
               imageCompressionEnabled={imageCompressionEnabled}
               onImageCompressionChange={onImageCompressionChange}
               noteProse={noteProse}
               onNoteProseChange={onNoteProseChange}
             />
-            <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-card lg:block">
-              <FeedbackLink />
-            </div>
+            {key === "general" ? (
+              <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-card lg:block">
+                <FeedbackLink />
+              </div>
+            ) : null}
           </div>
         );
       case "shortcuts":
         return (
-          <ShortcutSettingsItem
-            shortcutSettings={shortcutSettings}
-            onShortcutSettingsChange={onShortcutSettingsChange}
-          />
+          <div className="grid gap-6">
+            <AiSpaceShortcutSettingsItem />
+            <ShortcutSettingsItem
+              shortcutSettings={shortcutSettings}
+              onShortcutSettingsChange={onShortcutSettingsChange}
+            />
+          </div>
         );
       case "users":
         return isOwner ? (
@@ -240,8 +275,8 @@ export const SettingsPane = ({
       case "data":
         return (
           <SettingsGroup>
-            <DataExportCard refreshWorkspaceAfterImport={refreshWorkspaceAfterImport} />
-            <EvernoteImportGuideCard />
+            {window.edgeeverDesktop?.backup ? <DesktopScheduledBackupCard /> : <DataExportCard refreshWorkspaceAfterImport={refreshWorkspaceAfterImport} />}
+            <ThirdPartyImportCard controller={noteImport} onOpenMemo={onOpenMemo} />
           </SettingsGroup>
         );
       case "sharing":
@@ -363,15 +398,15 @@ export const SettingsPane = ({
           </aside>
 
           {/* 右侧设置内容区 */}
-          <main className="flex-1 min-w-0 overflow-y-auto pr-2">
+          <main className="flex-1 min-w-0 overflow-y-auto [scrollbar-gutter:stable] pr-2">
             <m.div key={activeTab} className="grid gap-4" {...contentEnterMotion}>
-              {renderTabContent(activeTab)}
+              {renderTabContent(activeTab, true)}
             </m.div>
           </main>
         </div>
 
         {/* 移动端布局 */}
-        <div className="flex lg:hidden flex-1 flex-col min-h-0 min-w-0 overflow-y-auto px-4 py-4">
+        <div className="flex lg:hidden flex-1 flex-col min-h-0 min-w-0 overflow-y-auto [scrollbar-gutter:stable] px-4 py-4">
           {activeMobileTab === null ? (
             /* 分类主菜单 */
             <div className="grid gap-2">
@@ -435,7 +470,7 @@ export const SettingsPane = ({
           ) : (
             /* 详情页面 */
             <m.div key={activeMobileTab} className="grid gap-4" {...contentEnterMotion}>
-              {renderTabContent(activeMobileTab)}
+              {renderTabContent(activeMobileTab, false)}
             </m.div>
           )}
         </div>
